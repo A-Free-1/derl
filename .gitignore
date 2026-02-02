@@ -1,5 +1,5 @@
 output
-*.pyc
 lunar_jump
+*.pyc
 sensor
 install
