@@ -6,6 +6,7 @@ from derl.envs.tasks.escape_bowl import make_env_escape_bowl
 from derl.envs.tasks.exploration import make_env_exploration
 from derl.envs.tasks.incline import make_env_incline
 from derl.envs.tasks.locomotion import make_env_locomotion
+from derl.envs.tasks.lunar_jump import make_env_lunar_jump
 from derl.envs.tasks.manipulation import make_env_manipulation
 from derl.envs.tasks.obstacle import make_env_obstacle
 from derl.envs.tasks.patrol import make_env_patrol

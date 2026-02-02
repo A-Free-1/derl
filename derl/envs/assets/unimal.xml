@@ -58,10 +58,13 @@
 	<actuator></actuator>
 	<sensor></sensor>
 	<!-- Add hfield assets -->
+	<!-- 添加hfield资产 -->
 	<asset></asset>
 	<!-- List of contacts to exclude -->
+	<!-- 排除的接触列表 -->
 	<contact></contact>
 	<!-- Define material, texture etc -->
+	<!-- 定义材质、纹理等 -->
 	<asset>
 		<material name="grid" texture="grid" texrepeat="1 1" texuniform="true" reflectance="0.1" />
 		<material name="hfield" texture="hfield" texrepeat="1 1" texuniform="true" reflectance="0.1" />

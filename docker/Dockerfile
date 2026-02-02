@@ -6,9 +6,13 @@ FROM $PARENT_IMAGE
 ARG TORCH
 ARG USER_ID
 
+# 修改 Ubuntu 16.04 镜像源为阿里云
+RUN sed -i 's/archive.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list \
+    && sed -i 's/security.ubuntu.com/mirrors.aliyun.com/g' /etc/apt/sources.list \
+    && apt-get update -q
+
 # Setup basic packages 
-RUN apt-get update -q \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y \
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
     curl \
     git \
     cmake \
@@ -62,15 +66,27 @@ RUN curl -LO http://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.s
 RUN rm /user/Miniconda3-latest-Linux-x86_64.sh
 ENV PATH=/user/miniconda/bin:${PATH}
 
+# 配置 conda 使用国内镜像源（清华源）
+RUN conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/free/ \
+    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/pkgs/main/ \
+    && conda config --set show_channel_urls yes
+
 # Create the conda env.
 RUN conda create -n docker_env python=3.6
 # Make python default to env python
 ENV PATH=/user/miniconda/envs/docker_env/bin:${PATH}
 
-RUN /bin/bash -c ". activate docker_env; conda install pytorch ${TORCH} -c pytorch"
+# 为 conda 环境配置国内源并安装 pytorch
+RUN /bin/bash -c ". activate docker_env \
+    && conda config --add channels https://mirrors.tuna.tsinghua.edu.cn/anaconda/cloud/pytorch/ \
+    && conda install pytorch ${TORCH} -c pytorch"
 
+# 配置 pip 使用国内镜像源
 COPY docker/build_files/requirements.txt /user/derl/docker/build_files/requirements.txt
-RUN /bin/bash -c ". activate docker_env; cd derl/docker/build_files; pip install -r requirements.txt"
+RUN /bin/bash -c ". activate docker_env; cd derl/docker/build_files \
+    && pip install --upgrade pip \
+    && pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
+    && pip install -r requirements.txt"
 
 # Copy the code in the very end
 COPY derl /user/derl/derl
@@ -79,6 +95,11 @@ COPY configs /user/derl/configs
 
 COPY setup.py /user/derl/
 RUN /bin/bash -c ". activate docker_env; cd derl; pip install -e ."
+
+# 可选：如果需要安装额外的依赖，可以添加国内 pip 源
+RUN /bin/bash -c ". activate docker_env \
+    && pip config set global.index-url https://mirrors.aliyun.com/pypi/simple/ \
+    && pip config set install.trusted-host mirrors.aliyun.com"
 
 RUN conda init
 RUN /bin/bash -c ". activate docker_env"

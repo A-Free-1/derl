@@ -54,19 +54,27 @@ class UnimalEnv(gym.Env):
     def _get_obs(self):
         obs = {}
         for _, module in self.modules.items():
+            # 合并所有模块的观测
             obs.update(module.observation_step(self, self.sim))
         return obs
 
     def _get_sim(self):
+        
         root, tree = xu.etree_from_xml(self.xml_str, ispath=False)
         self._init_modules()
         # Modify the xml
+        # 每一个模块修改xml
         for _, module in self.modules.items():
             module.modify_xml_step(self, root, tree)
 
         xml_str = xu.etree_to_str(root)
         model = mujoco_py.load_model_from_xml(xml_str)
         sim = mujoco_py.MjSim(model)
+        
+        # Apply gravity configuration if specified
+        if hasattr(cfg.ENV, 'GRAVITY') and cfg.ENV.GRAVITY is not None:
+            sim.model.opt.gravity[2] = -cfg.ENV.GRAVITY
+        
         # Update module fields which require sim
         for _, module in self.modules.items():
             module.modify_sim_step(self, sim)

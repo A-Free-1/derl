@@ -56,8 +56,11 @@ def get_dominate_mask(metadatas):
 
 
 def aging_tournament():
+    # 获取metadata文件夹中的所有JSON文件路径
     metadata_paths = fu.get_files(fu.get_subfolder("metadata"), ".*json")
+    # 按修改时间排序
     metadata_paths = sorted(metadata_paths, key=os.path.getmtime)
+    # 只保留最近的AGING_WINDOW_SIZE个unimals
     metadata_paths = metadata_paths[-cfg.EVO.AGING_WINDOW_SIZE :]
 
     num_unimals = cfg.EVO.NUM_PARTICIPANTS
@@ -68,19 +71,25 @@ def aging_tournament():
         )
         num_unimals = max(2, num_unimals)
 
+    # 从最近的unimals中随机选择num_unimals个进行锦标赛
     metadata_paths = random.choices(metadata_paths, k=num_unimals)
+    # 加载对应的metadata
     metadatas = [fu.load_json(m) for m in metadata_paths]
 
+    # 计算支配掩码
     dominate_mask = get_dominate_mask(metadatas)
+    # 获取帕累托前沿的unimals
     pareto_front = [m for m, d_mask in zip(metadatas, dominate_mask) if d_mask]
+    # 如果所有unimals都被支配，则随机选择一个返回
     if np.all(dominate_mask):
         # No solutions dominates all. Choose at random and return
         return random.choice(metadatas)
+    # 否则，从帕累托前沿中随机选择一个返回
     else:
         # Return a random unimal from the pareto_front
         return random.choice(pareto_front)
 
-
+# 锦标赛选择（无年龄机制）
 def vanilla_tournament():
     metadata_paths = fu.get_files(fu.get_subfolder("metadata"), ".*json")
 
@@ -128,6 +137,7 @@ def get_population_size():
 def should_save_video():
     """Return if video of unimal has to be saved."""
     # In case of RGS don't save video
+    # 当前不是进化搜索则不保存视频
     if not cfg.EVO.IS_EVO:
         return False
 
@@ -145,6 +155,7 @@ def should_save_video():
 
 
 def get_metadata_paths(metadata_dir=None):
+    # 获取metadata文件夹中的所有JSON文件路径
     if metadata_dir is None:
         metadata_dir = fu.get_subfolder("metadata")
     metadata_paths = fu.get_files(

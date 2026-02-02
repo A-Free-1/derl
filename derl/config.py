@@ -114,6 +114,10 @@ _C.ENV = CN()
 
 _C.ENV.FORWARD_REWARD_WEIGHT = 1.0
 
+_C.ENV.JUMP_REWARD_WEIGHT = 10.0
+
+_C.ENV.ENERGY_COST_WEIGHT = 1e-3
+
 _C.ENV.AVOID_REWARD_WEIGHT = 100.0
 
 _C.ENV.CTRL_COST_WEIGHT = 1e-3
@@ -154,7 +158,9 @@ _C.ENV.SKIP_SELF_POS = True
 # Specify task. Can be locomotion, manipulation
 _C.ENV.TASK = "locomotion"
 
-# Optional wrappers to add to task. Most wrappers for a task will eventually be
+# Gravity setting (m/s²). Default is None (use MuJoCo default 9.81)
+# Set to 1.62 for lunar gravity (Moon is 1/6 of Earth)
+_C.ENV.GRAVITY = None# Optional wrappers to add to task. Most wrappers for a task will eventually be
 # hardcoded in make_env_task func. Put wrappers which you want to experiment
 # with.
 _C.ENV.WRAPPERS = []

@@ -22,6 +22,7 @@ class SymmetricUnimal:
     def __init__(self, id_, init_path=None):
         self.id = id_
 
+        # 初始化存在的unimal
         if init_path:
             self._init_from_state(init_path)
             self.parent_id = fu.path2id(init_path)
@@ -29,10 +30,12 @@ class SymmetricUnimal:
             self._init_new_unimal()
             self.parent_id = ""
 
+        # 突变操作列表
         self.mutation_ops = cfg.EVO.MUTATION_OPS
         self.worldbody.append(self.unimal)
         # Mirror sites: If you add a limb in one mirror site you have to also
         # add the same limb to it's mirror counterpart.
+        # 初始化镜像部位映射
         if self.init_state:
             self.mirror_sites = self.init_state["mirror_sites"]
         else:
@@ -42,6 +45,7 @@ class SymmetricUnimal:
         """Construct a new unimal with just head."""
         self.init_state = None
         # Initalize xml from template
+        # 从模板下载初始化xml
         self.root, self.tree = xu.etree_from_xml(cfg.UNIMAL_TEMPLATE)
         self.worldbody = self.root.findall("./worldbody")[0]
         self.actuator = self.root.findall("./actuator")[0]
@@ -50,25 +54,30 @@ class SymmetricUnimal:
         # Set of contact pairs. Each item is a list (geom_name, geom_name).
         # Note: We cannot store ids as there is not gurantee they will be the
         # same.
+        # 管理接触对的集合。每个项目是一个列表（geom_name，geom_name）。
         self.contact_pairs = set()
 
         self.num_limbs = 0
         # In case of delete_limb op limb_idx can differ from num_limbs
         self.limb_idx = 0
         # Unimals starts with a head.
+        # 初始化躯干数量为1
         self.num_torso = 1
 
         # List of geom names. e.g [[limb1], [limb2, limb3], [limb4]] where
         # limb2 and limb3 are symmetric counterparts.
+        # 管理肢体名称的列表。例如[[limb1]，[limb2，limb3]，[limb4]]，其中limb2和limb3是对称对应物。
         self.limb_list = []
 
         # List of torso names
         self.torso_list = [0]
 
         # List of torso from where limbs can grow
+        # 可以生长肢体的躯干位置
         self.growth_torso = [0]
 
         # Body params
+        # 管理身体参数
         self.body_params = {
             "torso_mode": random.choice(["horizontal_y", "vertical"]),
             "torso_density": su.sample_from_range(cfg.TORSO.DENSITY_RANGE),
@@ -77,14 +86,17 @@ class SymmetricUnimal:
         }
 
         # Contains information about a limb like: orientation, parent etc
+        # 存储肢体的信息，如：方向、父级等
         self.limb_metadata = defaultdict(dict)
 
         # Construct unimal
+        # 构建unimal
         self.unimal = self._construct_head()
 
     def _init_from_state(self, init_path):
+        # 从pickle文件加载unimal的初始状态
         self.init_state = fu.load_pickle(init_path)
-
+        # 从保存的xml路径重新构建xml树
         self.root, self.tree = xu.etree_from_xml(self.init_state["xml_path"])
         self.worldbody = self.root.findall("./worldbody")[0]
         self.actuator = self.root.findall("./actuator")[0]
@@ -103,10 +115,12 @@ class SymmetricUnimal:
             self.root, "body", attr_type="name", attr_value=HEAD
         )[0]
 
+        # 清理不再需要的接触约束
         self._remove_permanent_contacts()
 
     def _construct_head(self):
         # Placeholder position which will be updated based final unimal height
+        # 构建头部主体，位置占位符将在最终unimal高度更新
         head = xu.body_elem("torso/0", [0, 0, 0])
         # Add joints between unimal and the env (generally the floor)
         if cfg.HFIELD.DIM == 1:
@@ -116,6 +130,7 @@ class SymmetricUnimal:
         else:
             head.append(xu.joint_elem("root", "free", "free"))
 
+        # 添加IMU传感器 用于测量速度和姿态的惯性测量单元站点
         head.append(xu.site_elem("root", None, "imu_vel"))
 
         head_params = self._choose_torso_params()
@@ -134,6 +149,8 @@ class SymmetricUnimal:
             )
         )
         # Add cameras
+        # 添加摄像头
+        # 模式trackcom: 摄像头跟踪质心
         head.append(
             etree.fromstring(
                 '<camera name="side" pos="0 -7 2" xyaxes="1 0 0 0 1 2" mode="trackcom"/>'
@@ -141,13 +158,17 @@ class SymmetricUnimal:
         )
 
         # Add site where limb can be attached
+        # 生长点位置 用于连接肢体
         head.append(xu.site_elem("torso/0", [0, 0, 0], "growth_site"))
+        # 底部位置站点 用于确定全局坐标中的底部位置 测量高度
         # Add btm pos site
         head.append(xu.site_elem("torso/btm_pos/0", [0, 0, -r], "btm_pos_site"))
         # Add site for touch sensor
+        # 触觉传感器站点
         head.append(
             xu.site_elem("torso/touch/0", None, "touch_site", str(r + 0.01))
         )
+        # 躯干生长站点 水平左侧或垂直下方
         # Add torso growth sites
         if "horizontal" in self.body_params["torso_mode"]:
             head.append(
@@ -165,17 +186,21 @@ class SymmetricUnimal:
 
     def _construct_limb(self, idx, site, site_type, limb_params, orient=None):
         # Get parent radius
+        # 获取父节点信息
         parent_idx = xu.name2id(site)
         if "torso" in site.get("name"):
             parent_name = "torso/{}".format(parent_idx)
         else:
             parent_name = "limb/{}".format(parent_idx)
+        # 获取父节点半径
         p_r = self._get_limb_r(parent_name)
 
         # Get limb_params
+        # 获取肢体参数
         r, h = limb_params["limb_radius"], limb_params["limb_height"]
 
         # Get limb orientation
+        # 确认肢体朝向 使用给定的或随机采样的
         if orient:
             h, theta, phi = orient
         else:
@@ -183,27 +208,42 @@ class SymmetricUnimal:
             # If we are growing two limbs, ensure that the random orientation
             # is less than 180. Prevents duplication of unimals where the
             # unimal only differs in which orientation was choosen first.
+            # 如果我们正在生长两个肢体，确保随机方向小于180。防止unimal重复，其中unimal仅在选择的方向上有所不同。
             if theta > np.pi and site_type == "mirror_growth_site":
                 theta = 2 * np.pi - theta
                 orient = (h, theta, phi)
             orient = (h, theta, phi)
 
         # Set limb pos
+        # 将肢体位置设置为父节点位置加上极坐标转换的增量
+        # 位置 = 父节点位置 + 极坐标转换(p_r, theta, phi)
+        # 极坐标转换参考 gu.sph2cart
+        # 将字符串位置转换为数组
         pos = xu.str2arr(site.get("pos"))
         pos = xu.add_list(pos, gu.sph2cart(p_r, theta, phi))
-
+        # def sph2cart(r, theta, phi):
+        # r: 半径
+        # theta: 方位角（0-2π）
+        # phi: 极角（0-π）
+        # x = r * np.sin(phi) * np.cos(theta)
+        # y = r * np.sin(phi) * np.sin(theta)
+        # z = r * np.cos(phi)
+        # return [x, y, z]
+        # 创建肢体主体
         name = "limb/{}".format(idx)
         limb = xu.body_elem(name, pos)
 
+        # 关节方向与肢体相反 归一化角度 计算关节的位置
         theta_j = np.pi + theta
         if theta_j >= 2 * np.pi:
             theta_j = theta_j - 2 * np.pi
         joint_pos = gu.sph2cart(r, theta_j, np.pi - phi)
+        # 添加关节元素
         for j_idx, axis in enumerate(limb_params["joint_axis"]):
             limb.append(
                 xu.joint_elem(
                     "limb{}/{}".format(axis, idx),
-                    "hinge",
+                    "hinge", # 铰链关节
                     "normal_joint",
                     axis=xu.axis2arr(axis),
                     range_=xu.arr2str(limb_params["joint_range"][j_idx]),
@@ -219,6 +259,7 @@ class SymmetricUnimal:
         # Note as per mujoco docs: The elongated part of the geom connects the
         # two from/to points i.e so we have to handle the r (and p_r) for
         # all the positions.
+        # 创建实际的几何体
         limb.append(
             etree.Element(
                 "geom",
@@ -231,6 +272,7 @@ class SymmetricUnimal:
                 },
             )
         )
+        # 中间位置站点 用于连接其他肢体
         x_mid, y_mid, z_mid = gu.sph2cart(r + h / 2, theta, phi)
         limb.append(
             xu.site_elem(
@@ -238,6 +280,7 @@ class SymmetricUnimal:
             )
         )
 
+        # 底部位置站点 用于连接其他肢体
         x_end, y_end, z_end = gu.sph2cart(r + h, theta, phi)
         limb.append(
             xu.site_elem(
@@ -245,6 +288,7 @@ class SymmetricUnimal:
             )
         )
         # Site to determine bottom position of geom in global coordinates
+        # 底部位置站点 用于确定全局坐标中的底部位置 测量高度 考虑了两个半径（父节点半径+肢体半径）
         x_end, y_end, z_end = gu.sph2cart(2 * r + h, theta, phi)
         limb.append(
             xu.site_elem(
@@ -255,6 +299,7 @@ class SymmetricUnimal:
         )
 
         # Site for touch sensor
+        # 触觉传感器站点
         limb.append(
             xu.site_elem(
                 "limb/touch/{}".format(idx),
@@ -269,8 +314,10 @@ class SymmetricUnimal:
 
     def set_head_pos(self):
         # Set the head pos to 0, 0, 0 before loading mjsim
+        # 将头部位置设置为0,0,0，然后加载mjsim
         self.unimal.set("pos", xu.arr2str([0.0, 0.0, 0.0]))
 
+        # 创建mjsim实例 仿真环境
         sim = mu.mjsim_from_etree(self.root)
         btm_pos_sites = xu.find_elem(self.unimal, "site", "class", "btm_pos_site")
         btm_pos_site_ids = [
@@ -279,13 +326,16 @@ class SymmetricUnimal:
         sim.step()
 
         # Get z_axis of all the sites
+        # 获取所有站点在Z轴上的坐标
         z_coords = sim.data.site_xpos[btm_pos_site_ids][:, 2]
         # All the z_axis are < 0. Select the smallest
         btm_most_pos_idx = np.argmin(z_coords)
+        # 计算头部应该抬升的高度
         head_z = -1 * z_coords[btm_most_pos_idx] + cfg.BODY.FLOOR_OFFSET
         self.unimal.set("pos", xu.arr2str([0, 0, round(head_z, 2)]))
 
     def _add_actuator(self, body_type, idx, params):
+        # 为每个关节添加执行器 gear是齿轮比 控制扭矩大小
         for axis, gear in zip(params["joint_axis"], params["gear"]):
             name = "{}{}/{}".format(body_type, axis, idx)
             self.actuator.append(xu.actuator_elem(name, gear))
@@ -296,8 +346,11 @@ class SymmetricUnimal:
         )
         parent.append(body_part)
         return parent
-
+        # 将新的身体部位附加到指定的站点
+        # 将新的body_part附加到指定的site所在的父节点上
+    
     def _contact_name2id(self, sim, contacts):
+        # 将接触点名称转换为ID
         """Converts list of [(name1, name2), ...] to [(id1, id2), ...]."""
         return [
             (mu.mj_name2id(sim, "geom", name1), mu.mj_name2id(sim, "geom", name2))
@@ -305,7 +358,7 @@ class SymmetricUnimal:
         ]
 
     def _contact_id2name(self, sim, contacts):
-        """Converts list of [(id1, id2), ...] to [(name1, name2), ...]."""
+        # 将接触点ID转换为名称
         return [
             (mu.mj_id2name(sim, "geom", id1), mu.mj_id2name(sim, "geom", id2))
             for (id1, id2) in contacts
@@ -313,8 +366,10 @@ class SymmetricUnimal:
 
     def to_string(self):
         return etree.tostring(self.root, encoding="unicode", pretty_print=True)
+        # 将XML树转换为字符串表示形式
 
     def mutate(self, op=None):
+        # 如果op为None、空字符串、0、空列表等"假值"，则选择一个随机突变操作
         if not op:
             op = self.choose_mutation()
         else:
@@ -331,9 +386,11 @@ class SymmetricUnimal:
         elif op == "delete_limb":
             self.mutate_delete_limb()
 
+        # 记录当前的突变操作
         self.curr_mutation = op
 
     def choose_mutation(self):
+        # 根据当前肢体数量选择合适的突变操作
         ops = self.mutation_ops.copy()
         if self.num_limbs == cfg.LIMB.MAX_LIMBS and "grow_limb" in ops:
             ops.remove("grow_limb")
@@ -344,13 +401,16 @@ class SymmetricUnimal:
         return random.choice(ops)
 
     def _sample_child_limb(self):
+        # 随机选择一个没有子肢体的肢体进行删除
         limb_list = self.limb_list.copy()
+        # 遍历候选肢体列表，直到找到一个没有子肢体的肢体
         while True:
             limbs = random.choice(limb_list)
             body = xu.find_elem(
                 self.unimal, "body", "name", "limb/{}".format(limbs[0])
             )[0]
-            num_children = len(xu.find_elem(body, "body", child_only=True))
+            num_children = len(xu.find_elem(body, "body", child_only=True)) # 表示只搜索直接子节点
+            # 如果没有子肢体，返回该肢体
             if num_children == 0:
                 return limbs
             else:
@@ -358,10 +418,12 @@ class SymmetricUnimal:
 
     def mutate_delete_limb(self):
         # Select a child limb(s) to delete
+        # 选择要删除的子肢体
         limb_to_remove = self._sample_child_limb()
         limb_names = set(["limb/{}".format(idx) for idx in limb_to_remove])
 
         # Remove body from xml
+        # 从xml中删除身体部位
         for limb_idx in limb_to_remove:
             body = xu.find_elem(
                 self.unimal, "body", "name", "limb/{}".format(limb_idx)
@@ -392,17 +454,22 @@ class SymmetricUnimal:
         self.contact_pairs = [
             contact_pair
             for contact_pair in self.contact_pairs
+            # 保留不包含被删除肢体的接触对
             if not limb_names.intersection(set(contact_pair))
         ]
+        # 转为集合以去重
         self.contact_pairs = set(self.contact_pairs)
 
         self.num_limbs -= len(limb_to_remove)
 
+        # 确保关节和执行器与现有肢体对齐
         self._align_joints_actuators()
 
     def mutate_limb_params(self):
+        # 选择要突变的肢体参数
         limb_params = self._choose_limb_params()
 
+        # 随机选择要突变的肢体（考虑对称性，选择一组）
         limb_to_mutate = random.choice(self.limb_list)
         for limb_idx in limb_to_mutate:
             body = xu.find_elem(
@@ -410,9 +477,11 @@ class SymmetricUnimal:
             )[0]
             self._mutate_params_of_limb(body, limb_idx, limb_params)
 
+        # 重新调整机器人高度
         self.set_head_pos()
 
     def _mutate_params_of_limb(self, body, limb_idx, limb_params):
+        # 获取当前几何体和父节点信息
         geom = xu.find_elem(body, "geom", "name", "limb/{}".format(limb_idx))[0]
 
         # Get parent data
@@ -420,8 +489,9 @@ class SymmetricUnimal:
         p_r = self._get_limb_r(parent_name)
 
         # New values
+        # 计算新的几何参数
         r, h = limb_params["limb_radius"], limb_params["limb_height"]
-        _, theta, phi = self.limb_metadata[limb_idx]["orient"]
+        _, theta, phi = self.limb_metadata[limb_idx]["orient"] # 方向不变
         x_f, y_f, z_f = [0.0, 0.0, 0.0]
         x_t, y_t, z_t = gu.sph2cart(r + h, theta, phi)
         x_mid, y_mid, z_mid = gu.sph2cart(r + h / 2, theta, phi)
@@ -434,6 +504,7 @@ class SymmetricUnimal:
         joint_pos = gu.sph2cart(r, theta_j, np.pi - phi)
 
         # Update the body pos (Note this is the only place which depends on p_r)
+        # 更新身体位置（注意这是唯一依赖于p_r的地方）
         attach_site = self.limb_metadata[limb_idx]["site"]
         attach_site = xu.find_elem(self.unimal, "site", "name", attach_site)[0]
         pos = xu.str2arr(attach_site.get("pos"))
@@ -445,6 +516,7 @@ class SymmetricUnimal:
 
         # Update pos of (immediate) child sites.
         sites = xu.find_elem(body, "site", child_only=True)
+        # 更新（直接）子站点的位置
         for site in sites:
             site_name = site.get("name")
             if "mid" in site_name:
@@ -465,6 +537,7 @@ class SymmetricUnimal:
 
         # Update joint pos
         joints = xu.find_elem(body, "joint", child_only=True)
+        # 更新关节位置
         for joint in joints:
             joint.set("pos", xu.arr2str(joint_pos))
 
@@ -474,11 +547,13 @@ class SymmetricUnimal:
         for child_body in child_bodies:
             child_idx = int(child_body.get("name").split("/")[-1])
             # Name of site where it was attached
+            # 获取子肢体的附加站点名称和方向
             site_name = self.limb_metadata[child_idx]["site"]
 
             # Get child orientation and size
             _, c_theta, c_phi = self.limb_metadata[child_idx]["orient"]
 
+            # 根据附加站点名称计算新的位置
             if "mid" in site_name:
                 new_pos = xu.add_list(
                     [x_mid, y_mid, z_mid], gu.sph2cart(r, c_theta, c_phi)
@@ -496,6 +571,7 @@ class SymmetricUnimal:
         geom.set("size", "{}".format(limb_params["limb_radius"]))
 
     def mutate_density(self):
+        # 采样新的密度值
         self.body_params["limb_density"] = su.sample_from_range(
             cfg.LIMB.DENSITY_RANGE
         )
@@ -504,6 +580,7 @@ class SymmetricUnimal:
         )
 
         limbs = xu.find_elem(self.unimal, "geom", "type", "capsule")
+        # 查找所有胶囊体几何体是肢体 并更新密度
         for limb in limbs:
             # Not needed, safety check
             if "limb" not in limb.get("name"):
@@ -511,6 +588,7 @@ class SymmetricUnimal:
             limb.set("density", str(self.body_params["limb_density"]))
 
         torsos = xu.find_elem(self.unimal, "geom", "type", "sphere")
+        # 查找所有球体几何体是躯干 并更新密度
         for torso in torsos:
             if "torso" not in torso.get("name"):
                 continue
@@ -519,6 +597,7 @@ class SymmetricUnimal:
     def mutate_joint(self, op):
         # If true randomly mutate all joints, otherwise only mutate the joints
         # of selected limbs
+        # 决定突变范围 全部关节还是部分关节 
         mutate_all = random.choice([True, False])
 
         # Select the corresponding mutation fuction
@@ -687,6 +766,7 @@ class SymmetricUnimal:
             new_site_type = "mirror_growth_site"
 
         # Construct single limb
+        # 构建单个肢体
         limb, orient = self._construct_limb(
             self.limb_idx, site, new_site_type, limb_params
         )
@@ -702,6 +782,8 @@ class SymmetricUnimal:
 
         # Get mirror site, and mirror orientation
         site_type = site.get("class")
+        # 构建镜像肢体
+        # 普通生长站点 需要创建镜像肢体
         if site_type == "growth_site":
             mirror_site = site
             r, theta, phi = orient
@@ -709,6 +791,7 @@ class SymmetricUnimal:
             if theta == 0 or theta == np.pi or phi == np.pi:
                 return None, None, None
             mirror_orient = (r, 2 * np.pi - theta, phi)
+        # 镜像生长站点 直接使用对应的镜像站点
         else:
             mirror_site_name = self.mirror_sites[site.get("name")]
             mirror_site = xu.find_elem(
@@ -717,12 +800,13 @@ class SymmetricUnimal:
             mirror_orient = orient
 
         # Construct mirror limb
+        # 构建镜像肢体
         mirror_limb, _ = self._construct_limb(
             self.limb_idx + 1,
             mirror_site,
             new_site_type,
             limb_params,
-            orient=mirror_orient,
+            orient = mirror_orient,
         )
 
         return (
@@ -801,6 +885,7 @@ class SymmetricUnimal:
             # For e.g if we select a site with name "limb/mid/3" and the mirror
             # site is "limb/mid/1". Then we return the mirror site. This
             # prevents duplicates.
+            # 确保不会重复添加肢体
             mirror_site_name = self.mirror_sites[site.get("name")]
             if (
                 mirror_site_name < site.get("name")
@@ -821,9 +906,11 @@ class SymmetricUnimal:
 
         # Get unimal center of mass (com)
         head_idx = sim.model.body_name2id(HEAD)
+        # 获取当前头部的质心位置
         unimal_com = sim.data.subtree_com[head_idx, :]
         # Center of mass should have zero component along axis normal to
         # cfg.BODY.SYMMETRY_PLANE.
+        # 对称轴上的质心分量应为零
         normal_axis = cfg.BODY.SYMMETRY_PLANE.index(0)
         return unimal_com[normal_axis] == 0
 
@@ -869,6 +956,7 @@ class SymmetricUnimal:
         return exclude_geom_pairs
 
     def _update_joint_axis(self):
+        # 更新所有关节的轴方向以匹配当前肢体方向 保持关节旋转轴和几何体坐标系一致
         sim = mu.mjsim_from_etree(self.root)
         sim.step()
         limbs = xu.find_elem(self.root, "body")
@@ -900,6 +988,7 @@ class SymmetricUnimal:
         self.mirror_sites[mirror_name] = site_name
 
     def _align_joints_actuators(self):
+        # 确保关节和执行器的顺序一致
         """Ensure that the joint order in body and actuators is aligned."""
         # Delete all gears
         motors = xu.find_elem(self.actuator, "motor")
@@ -915,6 +1004,7 @@ class SymmetricUnimal:
             self.actuator.append(xu.actuator_elem(name, gear))
 
     def _add_sensors(self):
+        # 添加传感器
         sensor = self.root.findall("./sensor")[0]
         for s in sensor:
             sensor.remove(s)

@@ -1,0 +1,38 @@
+# Lunar Jump Task Configuration
+# Optimizes lunar-based jumping robot morphology
+# Gravity: 1.62 m/s² (Moon)
+
+OUT_DIR: './output/lunar_jump'
+RNG_SEED: 1409
+ENV_NAME: 'Unimal-v0'
+
+EVO:
+  IS_EVO: true
+  # Select based on maximum jump height
+  SELECTION_CRITERIA: ["__reward__jump", "metric"]
+  SELECTION_CRITERIA_OBJ: [-1, -1]  # Maximize both
+
+ENV:
+  # Lunar jumping uses: Agent (body) + Floor (flat surface for jumps)
+  MODULES: ["Agent", "Floor"]
+  TASK: "lunar_jump"
+  KEYS_TO_KEEP: ["proprioceptive"]
+  OBS_TYPES: ["position", "velocity", "imu_vel", "touch", "extremities"]
+  # Lunar gravity (1/6 of Earth)
+  GRAVITY: 1.62
+  # Reward weights for lunar jumping
+  FORWARD_REWARD_WEIGHT: 1.0      # Horizontal distance
+  JUMP_REWARD_WEIGHT: 10.0        # Jump height (heavily weighted)
+  ENERGY_COST_WEIGHT: 0.001       # Energy penalty
+
+# Terrain: Flat surface for jumping (no complex terrain)
+TERRAIN:
+  SIZE: [50, 50, 1]
+  START_FLAT: 5
+  CENTER_FLAT: 40
+  TYPES: []  # No obstacles for pure jumping
+  BOUNDARY_WALLS: false
+
+# Training parameters for lunar jumping
+NUM_NODES: 16
+NODE_ID: 0
